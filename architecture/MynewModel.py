@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 import math
 from MosaicConvModule import MosaicConvModule
-from MyAttention import MACA
+from MyAttention_2 import MACA
 from MySIConvModule import FPC
 
 from utils import My_summary
@@ -226,6 +226,8 @@ class FGLN(nn.Module):
             mcm_ksize = msfa_size + 1
         elif msfa_size == 5:
             mcm_ksize = msfa_size + 2
+        elif msfa_size == 3:
+            mcm_ksize = msfa_size + 2
 
         self.SI = None
         if SI_type == 'MCM':
@@ -242,9 +244,9 @@ class FGLN(nn.Module):
         elif SI_type == 'FT-init':
             self.SI = FT_init(msfa_size=msfa_size)
         elif SI_type == 'FPC':
-            self.SI = FPC(msfa_size=msfa_size, in_channels=1, out_channels=16, kernel_size=5, num_experts=8, padding=2, bias=True)
+            self.SI = FPC(msfa_size=msfa_size, in_channels=1, out_channels=msfa_size**2, kernel_size=mcm_ksize, num_experts=msfa_size, padding=2, bias=True)
 
-        self.CA = MACA(msfa_size=msfa_size, channel=msfa_size ** 2, k_size=5, reduction=4)
+        self.CA = MACA(msfa_size=msfa_size, channel=msfa_size ** 2, k_size=mcm_ksize, reduction=msfa_size)
         self.lrelu = nn.LeakyReLU(0.2, inplace=True)
         self.conv_input = nn.Conv2d(in_channels=msfa_size**2, out_channels=64, kernel_size=3, stride=1, padding=1, bias=True)
         self.conv_output = nn.Conv2d(in_channels=64, out_channels=msfa_size**2, kernel_size=3, stride=1, padding=1, bias=True)
@@ -320,7 +322,7 @@ class FGLN(nn.Module):
 if __name__ == '__main__':
     torch.manual_seed(0)
 
-    model = FGLN(msfa_size=4, SI_type='FPC', num_blocks=2).cuda()
+    model = FGLN(msfa_size=3, SI_type='FPC', num_blocks=2).cuda()
     raw = torch.randn(1,1,480,512).cuda()
     sparse_raw = torch.randn(1,16,480,512).cuda()
     input_data = (raw, sparse_raw)

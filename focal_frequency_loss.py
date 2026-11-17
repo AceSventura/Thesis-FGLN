@@ -8,10 +8,11 @@ if IS_HIGH_VERSION:
 
 class FocalFrequencyLoss(nn.Module):
 
-    def __init__(self, loss_weight=1.0, alpha=1.0, patch_factor=1, ave_spectrum=False, log_matrix=False, batch_matrix=False):
+    def __init__(self, msfa_size = 5, loss_weight=1.0, alpha=1.0, patch_factor=1, ave_spectrum=False, log_matrix=False, batch_matrix=False):
         super(FocalFrequencyLoss, self).__init__()
         self.loss_weight = loss_weight
         self.alpha = alpha
+        self.msfa_size = msfa_size
         self.patch_factor = patch_factor
         self.ave_spectrum = ave_spectrum
         self.log_matrix = log_matrix
@@ -85,7 +86,7 @@ class FocalFrequencyLoss(nn.Module):
         return torch.mean(loss)
 
     @staticmethod
-    def get_msfa(img_tensor, msfa_size=4):
+    def get_msfa(img_tensor, msfa_size=5):
         mask = torch.zeros_like(img_tensor)
         for i in range(0, msfa_size):
             for j in range(0, msfa_size):
@@ -104,9 +105,9 @@ class FocalFrequencyLoss(nn.Module):
 
         # need mosaic sampling?
         if need_mask:
-            pred = self.get_msfa(pred) # [b,1,h,w]
+            pred = self.get_msfa(pred, self.msfa_size) # [b,1,h,w]
             if is_simulate:
-                target = self.get_msfa(target) # [b,1,h,w]
+                target = self.get_msfa(target, self.msfa_size) # [b,1,h,w]
 
         pred_freq = self.tensor2freq(pred) # 把tensor转换到频率域
         target_freq = self.tensor2freq(target)

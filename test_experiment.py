@@ -49,7 +49,7 @@ elif opt.dataset == 'ARAD':
     test_data = TestARADDataset(data_root=opt.test_dir, msfa_size=opt.msfa_size)
 elif opt.dataset == 'Real':
     test_data = RealDataset(opt, type='test')
-test_loader = DataLoader(dataset=test_data, batch_size=1, shuffle=False, num_workers=10, pin_memory=True)
+test_loader = DataLoader(dataset=test_data, batch_size=1, shuffle=False, num_workers=4, pin_memory=True)
 
 # gt list (get save file_name)
 file_type = '*.mat' # '*.mat' or '*.tif'

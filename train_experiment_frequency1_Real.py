@@ -7,25 +7,28 @@ from torch.utils.data import DataLoader
 from torch.autograd import Variable
 import os
 import random
+import numpy as np  # Aggiunto per msfa_pattern e np.random.uniform
 from tqdm import tqdm
 from utils import *
 from architecture import *
-from Real_dataset import RealDataset
 import datetime
 from focal_frequency_loss import FocalFrequencyLoss
 
+# Importazione del GenericFolderDataset al posto di RealDataset
+from GenericFolderDataset import GenericFolderDataset
+
 parser = argparse.ArgumentParser(description="Multispectral Image Demosaicing Toolbox")
-parser.add_argument('--method', type=str, default='My')
-parser.add_argument('--msfa_size', type=int, default=4)
-parser.add_argument('--dataset', type=str, default='CAVE', help='CAVE,ARAD')
+parser.add_argument('--method', type=str, default='FGLN')
+parser.add_argument('--msfa_size', type=int, default=3)
+parser.add_argument('--dataset', type=str, default='Generic', help='CAVE, ARAD, Generic, Flavia')
 parser.add_argument('--pretrained_model_path', type=str, default=None)
-parser.add_argument('--batch_size', type=int, default=20, help="batch size")
-parser.add_argument('--end_epoch', type=int, default=7500, help="number of iterations")
+parser.add_argument('--batch_size', type=int, default=16, help="batch size")
+parser.add_argument('--end_epoch', type=int, default=4000, help="number of iterations")
 parser.add_argument('--init_lr', type=float, default=4e-4, help="initial learning rate")
 parser.add_argument('--lr_step', type=int, default=1000, help="adjust learning rate")
 parser.add_argument('--outf', type=str, default='./exp/My/', help='output files')
-parser.add_argument('--train_dir', type=str, default='/home/lab206/mycode/demosaicing_MPEFormer/dataset/CAVE/train/')
-parser.add_argument('--test_dir', type=str, default='/home/lab206/mycode/demosaicing_MPEFormer/dataset/CAVE/test/')
+parser.add_argument('--train_dir', type=str, default='/mnt/Volume_Interno/UBUNTU/dataset_flavia/train/')
+parser.add_argument('--test_dir', type=str, default='/mnt/Volume_Interno/UBUNTU/dataset_flavia/valid/')
 parser.add_argument('--cache', type=str, default='./training_cache/', help='training data cache')
 parser.add_argument('--is_freq_loss', action='store_false') # TODO: 是否启用频域loss， 不写就是True，写了就是False
 parser.add_argument('--gpu_id', type=str, default='0')
@@ -41,18 +44,30 @@ print(f"\nLoading dataset: {opt.dataset}...")
 # loading cache
 cache_path = os.path.join(opt.cache, opt.dataset)
 if not os.path.exists(cache_path):
-    os.mkdir(cache_path)
+    os.makedirs(cache_path) # Usato makedirs per creare in modo sicuro path annidati
 opt.cache_path = cache_path
 
-# select dataset
-if opt.dataset == 'Real':
-    patch_size = 64
-    stride = 64
-    train_data = RealDataset(opt, type='train', patch_size=patch_size, stride=stride, augment=False)
-    test_data = RealDataset(opt, type='test')
+# =======================================================================
+# SELEZIONE DATASET E SETUP MSFA PATTERN
+# =======================================================================
+if opt.dataset in ['Real', 'Flavia', 'Generic']:
+    patch_size = 60
+    
+    # SETUP PATTERN: mapping di riordinamento delle bande
+    if opt.msfa_size == 3:
+        msfa_pattern = np.array([0, 5, 2, 3, 8, 7, 6, 1, 4])
+    else:
+        msfa_pattern = np.arange(opt.msfa_size ** 2).reshape(opt.msfa_size, opt.msfa_size)
+        
+    # INIZIALIZZAZIONE DATASET
+    train_data = GenericFolderDataset(opt.train_dir, msfa_size=opt.msfa_size, msfa_pattern=msfa_pattern, 
+                                      norm_flag=True, patch_size=patch_size, augment=False, type='train')
+    test_data = GenericFolderDataset(opt.test_dir, msfa_size=opt.msfa_size, msfa_pattern=msfa_pattern, 
+                                     norm_flag=True, patch_size=510, augment=False, type='test')
+# =======================================================================
 
-train_loader = DataLoader(dataset=train_data, batch_size=opt.batch_size, shuffle=True, num_workers=10, pin_memory=True)
-test_loader = DataLoader(dataset=test_data, batch_size=1, shuffle=False, num_workers=10, pin_memory=True)
+train_loader = DataLoader(dataset=train_data, batch_size=opt.batch_size, shuffle=True, num_workers=4, pin_memory=False)
+test_loader = DataLoader(dataset=test_data, batch_size=1, shuffle=False, num_workers=2, pin_memory=False)
 
 #per_epoch_iteration = len(train_data) // opt.batch_size
 print(f'Training set samples: {len(train_data)}')
@@ -64,7 +79,7 @@ print(f'Total iteration: {total_iteration}')
 criterion_SEI = self_evaluation_index(msfa_size=opt.msfa_size)
 
 # select corresponding loss function
-criterion = (L1_Charbonnier_mean_loss(), reconstruction_loss(msfa_size=opt.msfa_size), FocalFrequencyLoss())
+criterion = (L1_Charbonnier_mean_loss(), reconstruction_loss(msfa_size=opt.msfa_size), FocalFrequencyLoss(msfa_size=opt.msfa_size))
 
 # model
 pretrained_model_path = opt.pretrained_model_path
@@ -83,6 +98,7 @@ if torch.cuda.is_available():
     criterion[0].cuda() # cube_loss
     criterion[1].cuda() # mosaic_loss
     criterion[2].cuda() # focal frequency loss
+    criterion_SEI.cuda() # assicurarsi che il criterion SEI sia su GPU
 
 if torch.cuda.device_count() > 1:
     model = nn.DataParallel(model)
@@ -267,7 +283,7 @@ def validate(opt, test_loader, method, model, epoch, num_epochs):
             SEI = criterion_SEI(output)
 
             # record metrics
-            metric_SEI.update(SEI.data)
+            metric_SEI.update(SEI.data.item()) # Aggiornato con .item() per evitare memory leak
 
             test_bar.set_description(desc='Epoch[%d/%d] SEI: %.9e' % (epoch, num_epochs, metric_SEI.avg))
     # logger

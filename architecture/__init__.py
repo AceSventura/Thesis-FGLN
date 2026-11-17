@@ -4,7 +4,7 @@ from .MynewModel import FGLN
 
 def model_generator(method, msfa_size, pretrained_model_path=None):
     if method == 'FGLN':
-        model = FGLN(msfa_size=4, SI_type='FPC', num_blocks=2).cuda() ## TODO: 注意SI_type再开始训练
+        model = FGLN(msfa_size=msfa_size, SI_type='FPC', num_blocks=2).cuda() ## TODO: 注意SI_type再开始训练
 
     else:
         print(f'Method {method} is not defined !!!!')
